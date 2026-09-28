@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import TeamLogo from "./TeamLogo.vue";
+import PlayerAvatar from "./PlayerAvatar.vue";
 import { cup, me, playerName, teamName } from "../store.js";
 import { formatDate, formatDateTime, periodSuffix } from "../format.js";
 
@@ -71,7 +72,8 @@ function resultKind(game) {
       <tbody>
         <tr v-for="row in cup.standings" :key="row.playerId" :class="{ leader: row.rank === 1 && row.points > 0 }">
           <td class="num">{{ row.rank }}</td>
-          <td :class="{ strong: row.playerId === me?.id }">
+          <td class="player-cell" :class="{ strong: row.playerId === me?.id }">
+            <PlayerAvatar :name="row.name" :size="36" />
             {{ row.name }}
             <span v-if="row.playerId === cup.holderOwner" class="badge gold" title="Holds the cup now">Cup</span>
           </td>

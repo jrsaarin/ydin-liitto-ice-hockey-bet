@@ -3,13 +3,18 @@ import { TEAMS, TEAM_ABBRS } from "./teams.js";
 import { computeCup, rankPlayers } from "./cup.js";
 import { describeDraft, shuffle } from "./draft.js";
 import { syncGames } from "./sync.js";
+import { avatarProblem, avatarsVersion } from "./avatar.js";
 import {
+  deleteAvatar,
   deleteMeta,
   getAllMeta,
+  getAvatarIndex,
+  getAvatars,
   getGames,
   getMeta,
   getPicks,
   getPlayers,
+  setAvatar,
   setMeta,
 } from "./db.js";
 
@@ -133,9 +138,24 @@ function syncIsDue(meta, now = Date.now()) {
   return now - last > STALE_SYNC_MS && now - started > SYNC_LOCK_MS;
 }
 
+// Pictures are an extra. If their table is missing, because the code went
+// live before its migration, the draft must keep working without them.
+async function loadAvatarIndex(db) {
+  try {
+    return await getAvatarIndex(db);
+  } catch (error) {
+    console.error("Avatars are unavailable:", error);
+    return null;
+  }
+}
+
 async function getState(env, ctx, role) {
   const db = env.DB;
-  const [league, meta] = await Promise.all([loadLeague(db), getAllMeta(db)]);
+  const [league, meta, avatarIndex] = await Promise.all([
+    loadLeague(db),
+    getAllMeta(db),
+    loadAvatarIndex(db),
+  ]);
 
   // Safety net for the cron trigger: a visit refreshes stale data in the background.
   if (syncIsDue(meta)) ctx.waitUntil(runSync(env).catch(() => {}));
@@ -159,6 +179,9 @@ async function getState(env, ctx, role) {
     teams: TEAMS,
     league,
     cup,
+    // Null means pictures are switched off. Otherwise clients reload the
+    // pictures whenever this value changes.
+    avatarsVersion: avatarIndex && avatarsVersion(avatarIndex),
     sync: { lastSyncedAt: meta.last_synced_at ?? null, error: meta.last_sync_error || null },
   });
 }
@@ -249,6 +272,32 @@ async function resetLeague(env) {
   ]);
 }
 
+// Names that may carry a picture: the league as drawn, or the planned names
+// before the draw.
+async function knownNames(db) {
+  const players = await getPlayers(db);
+  return players.length > 0 ? players.map((player) => player.name) : CONFIG.players;
+}
+
+// Sets the picture of one player, or removes it when the image is null. Like
+// picks, this is on trust, except for the commissioner's own player.
+async function changeAvatar(request, env, role) {
+  const db = env.DB;
+  const body = await readBody(request);
+  const name = String(body.name ?? "");
+  if (!(await knownNames(db)).includes(name)) throw new HttpError(400, "Unknown player.");
+  if (name === CONFIG.commissioner && role !== "commish") {
+    throw new HttpError(403, `Only the commissioner can change the picture of ${name}.`);
+  }
+  if (body.image == null) {
+    await deleteAvatar(db, name);
+    return;
+  }
+  const problem = avatarProblem(body.image);
+  if (problem) throw new HttpError(400, problem);
+  await setAvatar(db, name, body.image, new Date().toISOString());
+}
+
 async function handleApi(request, env, ctx) {
   const { pathname } = new URL(request.url);
   const route = `${request.method} ${pathname}`;
@@ -258,6 +307,11 @@ async function handleApi(request, env, ctx) {
 
   switch (route) {
     case "GET /api/state":
+      break;
+    case "GET /api/avatars":
+      return json({ avatars: await getAvatars(env.DB) });
+    case "POST /api/avatar":
+      await changeAvatar(request, env, role);
       break;
     case "POST /api/setup":
       await setupLeague(request, env);

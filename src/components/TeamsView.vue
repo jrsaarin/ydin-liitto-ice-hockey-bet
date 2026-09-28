@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import TeamLogo from "./TeamLogo.vue";
+import PlayerAvatar from "./PlayerAvatar.vue";
 import { cup, league, me, ownerByTeam, store, teamName } from "../store.js";
 
 const undrafted = computed(() =>
@@ -24,7 +25,10 @@ function heldByPlayer(player) {
   <div class="rosters">
     <section v-for="player in league.players" :key="player.id" class="card roster" :class="{ mine: player.id === me?.id }">
       <h2>
-        {{ player.name }}
+        <span class="with-avatar">
+          <PlayerAvatar :name="player.name" :size="32" />
+          {{ player.name }}
+        </span>
         <span class="badge">{{ points(heldByPlayer(player)) }}</span>
       </h2>
       <ul class="roster-teams">

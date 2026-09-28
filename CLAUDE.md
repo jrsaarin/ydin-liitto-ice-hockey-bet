@@ -46,6 +46,7 @@ One Cloudflare Worker serves everything. Static assets are the built Vue app. On
 - `cup.js` and `draft.js` are pure functions with no I/O. All rule logic lives in them and all rule tests target them. Keep them pure.
 - `nhl.js` fetches and flattens one schedule week. `sync.js` decides which weeks to fetch and writes only changed rows.
 - `db.js` is the only file with SQL. It maps snake_case rows to camelCase objects.
+- `avatar.js` validates profile pictures. `src/image.js` imports its size constant, which is the one place where the frontend reads Worker code.
 - `index.js` is the router. Every mutation answers with the full state, the same payload as `GET /api/state`, so the client never merges partial updates.
 
 ### Data flow
@@ -54,6 +55,8 @@ One Cloudflare Worker serves everything. Static assets are the built Vue app. On
 2. After a sync, if the draft is complete, the cup result is computed from all games and stored as JSON in `meta.cup_cache`.
 3. `GET /api/state` reads players, picks and `meta`. It never reads the `games` table unless the cache is missing.
 4. Any change to the draft deletes `cup_cache`.
+
+Profile pictures follow their own path, because they are large and the state is polled every few seconds. The state carries only `avatarsVersion`. When it changes, the client fetches all pictures once from `GET /api/avatars`. Pictures are keyed by player name, not id, so they survive a reset. They are data URLs in D1, since R2 would need a payment method on the account.
 
 `GET /api/state` also starts a background sync when the last one is older than 26 hours. That is a safety net for a missed cron run and the reason local development works without it. The commissioner can force a sync from the fix panel.
 
@@ -71,6 +74,7 @@ One Cloudflare Worker serves everything. Static assets are the built Vue app. On
 - **Checks before database.** `requireFairUse` (rate limit per address) and `requirePasscode` run before any D1 query, so unauthenticated traffic costs no database reads. Keep that order.
 - **Roles come from the password.** `requirePasscode` returns `member` or `commish`. There are no accounts or sessions. The role is sent to the client as `viewer.role`, but the server is what enforces it: undo, reset, and picks for the commissioner's player answer 403 to a member.
 - **Results are a day old by design.** The group asked for one sync per day. Live scores are out of scope, so `nextGame.live` is only ever true after a manual sync during a game.
+- **Migrations go first.** Production has live data. Apply a new migration before deploying the code that needs it. The avatar queries tolerate a missing table for that reason, and new tables should get the same treatment.
 - **Draft races.** `picks.pick_number` is the primary key and `picks.team` is unique. Two simultaneous picks cannot both succeed. The client also sends the pick number and player it believes are on the clock, and the server rejects a mismatch.
 - **Rules live in one place.** Each history entry carries `pointTo` and `changedHands`. Use those rather than re-deriving the rules in the UI.
 - **Cup chain.** `computeCup` walks the holder's games in time order and stops at the first unfinished one, so a late result can never be applied out of order. An unfinished game older than 36 hours is skipped so that a silently postponed game cannot freeze the cup.
@@ -84,3 +88,4 @@ One Cloudflare Worker serves everything. Static assets are the built Vue app. On
 - Identity inside the group is on trust. Do not add per-player authentication. The one exception is the commissioner, named in `CONFIG.commissioner`, who has a separate password.
 - Anyone in the group may draw the draft order. Only the commissioner can undo picks or reset.
 - After the draft the page is read-only for members. The commissioner keeps the fix panel.
+- Profile pictures can only be set during the draft phase, by the player themselves, on trust.

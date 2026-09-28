@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import TeamLogo from "./TeamLogo.vue";
+import PlayerAvatar from "./PlayerAvatar.vue";
+import AvatarEditor from "./AvatarEditor.vue";
 import { act, league, me, notify, ownerByTeam, playerName, store, teamName } from "../store.js";
 
 const config = computed(() => store.data.config);
@@ -81,8 +83,11 @@ async function confirmPick() {
       <p class="eyebrow">
         Round {{ onTheClock.round }} · Pick {{ onTheClock.pickNumber }} of {{ league.totalPicks }}
       </p>
-      <h1 v-if="myTurn">Your turn, {{ me.name }}</h1>
-      <h1 v-else>{{ playerName(onTheClock.playerId) }} is on the clock</h1>
+      <h1 class="with-avatar">
+        <PlayerAvatar :name="playerName(onTheClock.playerId)" :size="44" />
+        <template v-if="myTurn">Your turn, {{ me.name }}</template>
+        <template v-else>{{ playerName(onTheClock.playerId) }} is on the clock</template>
+      </h1>
       <p v-if="!myTurn" class="muted">Waiting for the pick. This page updates by itself.</p>
       <div v-else-if="selected" class="confirm">
         <TeamLogo :team="selected" :size="44" />
@@ -133,7 +138,10 @@ async function confirmPick() {
                 :class="{ current: onTheClock?.pickNumber === slot.pickNumber, filled: slot.pick }"
               >
                 <span class="slot-number muted">{{ slot.pickNumber }}</span>
-                <span class="slot-player" :class="{ strong: slot.playerId === me?.id }">{{ playerName(slot.playerId) }}</span>
+                <span class="slot-player" :class="{ strong: slot.playerId === me?.id }">
+                  <PlayerAvatar :name="playerName(slot.playerId)" :size="20" />
+                  {{ playerName(slot.playerId) }}
+                </span>
                 <span v-if="slot.pick" class="slot-team">
                   <TeamLogo :team="slot.pick.team" :size="24" />
                   {{ slot.pick.team }}
@@ -146,4 +154,6 @@ async function confirmPick() {
       </div>
     </section>
   </template>
+
+  <AvatarEditor />
 </template>

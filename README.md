@@ -20,6 +20,8 @@ The app has two phases.
 
 Identity inside the group runs on trust: the password lets you in, and you are expected to choose your own name.
 
+During the draft every player can set a profile picture at the bottom of the page. It is cropped to a square, shrunk in the browser and shown next to the player's name, most visibly in the standings. Pictures survive a league reset.
+
 ## Passwords
 
 | Password | Who has it | What it allows |
@@ -63,6 +65,8 @@ npx wrangler secret put COMMISH_PASSCODE   # the commissioner's own password
 ```
 
 Until the league password is set, the page loads but every login is refused. Without a commissioner password nobody can undo picks or reset the league. The two passwords must differ.
+
+When a change adds a file under `migrations/`, run `npm run db:migrate:remote` before `npm run deploy`.
 
 Setting up from scratch on another Cloudflare account needs two more steps before the deploy: run `npx wrangler d1 create cup-bet`, put the printed `database_id` into `wrangler.jsonc`, then run `npm run db:migrate:remote`.
 

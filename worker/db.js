@@ -113,3 +113,29 @@ export function upsertGameStatement(db, game) {
       game.lastPeriodType,
     );
 }
+
+// Names and timestamps only. The images are large, so they are read
+// separately and only when a client asks for them.
+export async function getAvatarIndex(db) {
+  const { results } = await db.prepare("SELECT name, updated_at FROM avatars").all();
+  return results.map((row) => ({ name: row.name, updatedAt: row.updated_at }));
+}
+
+export async function getAvatars(db) {
+  const { results } = await db.prepare("SELECT name, image FROM avatars").all();
+  return Object.fromEntries(results.map((row) => [row.name, row.image]));
+}
+
+export async function setAvatar(db, name, image, updatedAt) {
+  await db
+    .prepare(
+      `INSERT INTO avatars (name, image, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET image = excluded.image, updated_at = excluded.updated_at`,
+    )
+    .bind(name, image, updatedAt)
+    .run();
+}
+
+export async function deleteAvatar(db, name) {
+  await db.prepare("DELETE FROM avatars WHERE name = ?").bind(name).run();
+}

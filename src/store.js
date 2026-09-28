@@ -1,7 +1,7 @@
 // One small reactive store shared by all components. The server always
 // answers with the full state, so every action simply replaces it.
 
-import { computed, reactive } from "vue";
+import { computed, reactive, watch } from "vue";
 
 const PASSCODE_KEY = "cup.passcode";
 const PLAYER_KEY = "cup.player";
@@ -31,6 +31,9 @@ export const store = reactive({
   passcode: read(PASSCODE_KEY),
   // Name of the player using this device. Chosen by the player, on trust.
   myName: read(PLAYER_KEY),
+  // Profile pictures as data URLs, by player name.
+  avatars: {},
+  avatarsEnabled: false,
 });
 
 export const league = computed(() => store.data?.league ?? null);
@@ -105,9 +108,25 @@ async function call(path, { method = "GET", body, passcode = store.passcode } = 
   return payload;
 }
 
+// The state only carries a version of the pictures. The pictures themselves
+// are fetched when that version changes, not on every poll.
+watch(
+  () => store.data?.avatarsVersion,
+  async (version) => {
+    store.avatarsEnabled = version != null;
+    if (version == null) return;
+    try {
+      store.avatars = (await call("/api/avatars")).avatars;
+    } catch {
+      // Pictures are decoration. The next change of version tries again.
+    }
+  },
+);
+
 export function logOut() {
   store.passcode = "";
   store.data = null;
+  store.avatars = {};
   store.loadError = null;
   write(PASSCODE_KEY, "");
 }
