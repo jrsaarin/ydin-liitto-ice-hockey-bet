@@ -294,12 +294,28 @@ input {
 }
 
 input[type="text"],
+input[type="email"],
 input[type="password"] {
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface-2);
+}
+
+.subscribe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.subscribe p {
+  grid-column: 1 / -1;
+}
+
+.admin .banner {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
 }
 
 /* Profile pictures */

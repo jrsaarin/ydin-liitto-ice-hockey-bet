@@ -1,12 +1,16 @@
+import { connect } from "cloudflare:sockets";
 import { CONFIG } from "./config.js";
 import { TEAMS, TEAM_ABBRS } from "./teams.js";
 import { computeCup, rankPlayers } from "./cup.js";
 import { describeDraft, shuffle } from "./draft.js";
 import { syncGames } from "./sync.js";
 import { avatarProblem, avatarsVersion } from "./avatar.js";
+import { emailProblem, pickEmails } from "./mail.js";
+import { sendMail } from "./smtp.js";
 import {
   deleteAvatar,
   deleteMeta,
+  deleteSubscription,
   getAllMeta,
   getAvatarIndex,
   getAvatars,
@@ -14,8 +18,10 @@ import {
   getMeta,
   getPicks,
   getPlayers,
+  getSubscriptions,
   setAvatar,
   setMeta,
+  setSubscription,
 } from "./db.js";
 
 // The cron trigger syncs once a day. A visit only starts a sync when that run
@@ -149,12 +155,64 @@ async function loadAvatarIndex(db) {
   }
 }
 
+// Emails go out through an ordinary mailbox, by default Gmail. Without an
+// account configured, notifications are simply switched off.
+function mailAccount(env) {
+  if (!env.SMTP_USER || !env.SMTP_PASSWORD) return null;
+  return {
+    host: env.SMTP_HOST ?? "smtp.gmail.com",
+    port: Number(env.SMTP_PORT ?? 465),
+    secure: env.SMTP_SECURE !== "off",
+    user: env.SMTP_USER,
+    // Gmail shows app passwords in groups of four. The spaces are not part of it.
+    password: env.SMTP_PASSWORD.replaceAll(" ", ""),
+    fromName: "Ydin liitto Cup",
+  };
+}
+
+// Like pictures, notifications are an extra that must never stop the draft.
+async function loadSubscriptions(db) {
+  try {
+    return await getSubscriptions(db);
+  } catch (error) {
+    console.error("Subscriptions are unavailable:", error);
+    return null;
+  }
+}
+
+// Runs after the pick is stored and answered. Problems are recorded for the
+// commissioner and otherwise ignored.
+async function notifyPick(env, { pick, league, url }) {
+  const account = mailAccount(env);
+  const subscriptions = account && (await loadSubscriptions(env.DB));
+  if (!subscriptions) return;
+  const nameOf = (playerId) => league.players.find((player) => player.id === playerId).name;
+  const emails = pickEmails({
+    pick,
+    picker: nameOf(pick.playerId),
+    teamName: TEAMS.find((team) => team.abbr === pick.team).name,
+    next: league.onTheClock ? nameOf(league.onTheClock.playerId) : null,
+    totalPicks: league.totalPicks,
+    subscriptions,
+    url,
+  });
+  if (emails.length === 0) return;
+  try {
+    await sendMail({ connect, ...account, emails });
+    await setMeta(env.DB, "last_mail_error", "");
+  } catch (error) {
+    console.error("Pick email failed:", error);
+    await setMeta(env.DB, "last_mail_error", `${new Date().toISOString()} ${error?.message ?? error}`);
+  }
+}
+
 async function getState(env, ctx, role) {
   const db = env.DB;
-  const [league, meta, avatarIndex] = await Promise.all([
+  const [league, meta, avatarIndex, subscriptions] = await Promise.all([
     loadLeague(db),
     getAllMeta(db),
     loadAvatarIndex(db),
+    mailAccount(env) ? loadSubscriptions(db) : null,
   ]);
 
   // Safety net for the cron trigger: a visit refreshes stale data in the background.
@@ -182,6 +240,12 @@ async function getState(env, ctx, role) {
     // Null means pictures are switched off. Otherwise clients reload the
     // pictures whenever this value changes.
     avatarsVersion: avatarIndex && avatarsVersion(avatarIndex),
+    // Null means notifications are switched off. Addresses never leave the
+    // server: clients only learn which players are subscribed.
+    notifications: subscriptions && {
+      subscribed: Object.keys(subscriptions),
+      lastError: role === "commish" ? meta.last_mail_error || null : null,
+    },
     sync: { lastSyncedAt: meta.last_synced_at ?? null, error: meta.last_sync_error || null },
   });
 }
@@ -217,7 +281,7 @@ async function setupLeague(request, env) {
   await deleteMeta(db, "cup_cache");
 }
 
-async function makePick(request, env, role) {
+async function makePick(request, env, ctx, role) {
   const db = env.DB;
   const body = await readBody(request);
   const team = String(body.team ?? "").toUpperCase();
@@ -251,6 +315,16 @@ async function makePick(request, env, role) {
     throw new HttpError(409, "Someone else picked at the same time. Refresh and try again.");
   }
   await deleteMeta(db, "cup_cache");
+
+  ctx.waitUntil(
+    loadLeague(db).then((after) =>
+      notifyPick(env, {
+        pick: after.picks.find((pick) => pick.pickNumber === pickNumber),
+        league: after,
+        url: new URL(request.url).origin,
+      }),
+    ),
+  );
 }
 
 async function undoPick(env) {
@@ -298,6 +372,54 @@ async function changeAvatar(request, env, role) {
   await setAvatar(db, name, body.image, new Date().toISOString());
 }
 
+// Turns pick emails on for one player, or off when the email is null. On
+// trust like picks, except for the commissioner's own player.
+async function changeSubscription(request, env, role) {
+  const db = env.DB;
+  if (!mailAccount(env)) throw new HttpError(409, "Notifications are not set up on the server.");
+  const body = await readBody(request);
+  const name = String(body.name ?? "");
+  if (!(await knownNames(db)).includes(name)) throw new HttpError(400, "Unknown player.");
+  if (name === CONFIG.commissioner && role !== "commish") {
+    throw new HttpError(403, `Only the commissioner can change notifications for ${name}.`);
+  }
+  if (body.email == null) {
+    await deleteSubscription(db, name);
+    return;
+  }
+  const email = String(body.email).trim();
+  const problem = emailProblem(email);
+  if (problem) throw new HttpError(400, problem);
+  await setSubscription(db, name, email, new Date().toISOString());
+}
+
+// Lets the commissioner check the mailbox settings without making a pick.
+// Unlike pick emails this waits for the mail server, so the answer says
+// whether it worked.
+async function sendTestEmail(request, env) {
+  const account = mailAccount(env);
+  if (!account) {
+    throw new HttpError(409, "Email is not set up. The SMTP_USER and SMTP_PASSWORD secrets are missing.");
+  }
+  const subscriptions = (await loadSubscriptions(env.DB)) ?? {};
+  const to = subscriptions[CONFIG.commissioner] ?? account.user;
+  const text = [
+    "This is a test from the commissioner panel.",
+    "",
+    "If you can read this, pick emails will work too.",
+    "",
+    new URL(request.url).origin,
+  ].join("\n");
+  try {
+    await sendMail({ connect, ...account, emails: [{ to: [to], subject: "Test email from Ydin liitto Cup", text }] });
+    await setMeta(env.DB, "last_mail_error", "");
+  } catch (error) {
+    const message = String(error?.message ?? error);
+    await setMeta(env.DB, "last_mail_error", `${new Date().toISOString()} ${message}`);
+    throw new HttpError(502, `The test email failed: ${message}`);
+  }
+}
+
 async function handleApi(request, env, ctx) {
   const { pathname } = new URL(request.url);
   const route = `${request.method} ${pathname}`;
@@ -316,8 +438,11 @@ async function handleApi(request, env, ctx) {
     case "POST /api/setup":
       await setupLeague(request, env);
       break;
+    case "POST /api/subscription":
+      await changeSubscription(request, env, role);
+      break;
     case "POST /api/pick":
-      await makePick(request, env, role);
+      await makePick(request, env, ctx, role);
       break;
     case "POST /api/undo":
       requireCommish(role);
@@ -326,6 +451,10 @@ async function handleApi(request, env, ctx) {
     case "POST /api/reset":
       requireCommish(role);
       await resetLeague(env);
+      break;
+    case "POST /api/test-email":
+      requireCommish(role);
+      await sendTestEmail(request, env);
       break;
     case "POST /api/sync":
       await syncOnRequest(env);

@@ -139,3 +139,23 @@ export async function setAvatar(db, name, image, updatedAt) {
 export async function deleteAvatar(db, name) {
   await db.prepare("DELETE FROM avatars WHERE name = ?").bind(name).run();
 }
+
+// Maps player names to the address they subscribed with.
+export async function getSubscriptions(db) {
+  const { results } = await db.prepare("SELECT name, email FROM subscriptions").all();
+  return Object.fromEntries(results.map((row) => [row.name, row.email]));
+}
+
+export async function setSubscription(db, name, email, createdAt) {
+  await db
+    .prepare(
+      `INSERT INTO subscriptions (name, email, created_at) VALUES (?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET email = excluded.email, created_at = excluded.created_at`,
+    )
+    .bind(name, email, createdAt)
+    .run();
+}
+
+export async function deleteSubscription(db, name) {
+  await db.prepare("DELETE FROM subscriptions WHERE name = ?").bind(name).run();
+}

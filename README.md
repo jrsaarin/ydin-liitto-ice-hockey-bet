@@ -22,6 +22,27 @@ Identity inside the group runs on trust: the password lets you in, and you are e
 
 During the draft every player can set a profile picture at the bottom of the page. It is cropped to a square, shrunk in the browser and shown next to the player's name, most visibly in the standings. Pictures survive a league reset.
 
+## Email notifications
+
+During the draft every player can turn on emails at the bottom of the page. A subscribed player gets one email for every pick made by someone else, and a "Your turn to pick" email when they are up next. Addresses are stored on the server and never shown to anyone, including the other players.
+
+The emails are sent from a Gmail account over SMTP. To switch the feature on:
+
+1. Turn on 2-Step Verification for the Gmail account.
+2. Create an app password at https://myaccount.google.com/apppasswords.
+3. Store the address and the app password as secrets:
+
+```sh
+npx wrangler secret put SMTP_USER       # the Gmail address
+npx wrangler secret put SMTP_PASSWORD   # the 16-letter app password
+```
+
+The commissioner can check the setup with "Send test email" in the "Fix a mistake" panel. The page then shows either a confirmation or the reason the mail server gave.
+
+Without these two secrets the notification card is hidden and no email is sent. If sending fails, the commissioner sees the reason in the "Fix a mistake" panel. A failed email never blocks a pick.
+
+An app password gives full access to the mailbox, so a Gmail account made for this purpose is safer than a personal one.
+
 ## Passwords
 
 | Password | Who has it | What it allows |

@@ -4,3 +4,10 @@
 LEAGUE_PASSCODE=dev
 # The commissioner logs in with this one instead. Set it the same way.
 COMMISH_PASSCODE=commish
+
+# Optional. Pick emails are sent through this mailbox, by default Gmail with
+# an app password. Leave these out and notifications are switched off.
+#   npx wrangler secret put SMTP_USER
+#   npx wrangler secret put SMTP_PASSWORD
+# SMTP_USER=someone@gmail.com
+# SMTP_PASSWORD=abcd efgh ijkl mnop

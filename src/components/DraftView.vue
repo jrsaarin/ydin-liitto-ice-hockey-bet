@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import TeamLogo from "./TeamLogo.vue";
 import PlayerAvatar from "./PlayerAvatar.vue";
 import AvatarEditor from "./AvatarEditor.vue";
+import NotificationCard from "./NotificationCard.vue";
 import { act, league, me, notify, ownerByTeam, playerName, store, teamName } from "../store.js";
 
 const config = computed(() => store.data.config);
@@ -156,4 +157,5 @@ async function confirmPick() {
   </template>
 
   <AvatarEditor />
+  <NotificationCard />
 </template>
