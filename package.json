@@ -1,0 +1,25 @@
+{
+  "name": "ydin-liitto-ice-hockey-bet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cup-tracking bet for a friend group: snake draft of NHL teams, the cup moves to whoever beats the holder.",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite build && vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "test": "node --test",
+    "db:migrate:local": "wrangler d1 migrations apply cup-bet --local",
+    "db:migrate:remote": "wrangler d1 migrations apply cup-bet --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.62.0",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "vite": "^8.3.1",
+    "wrangler": "^4.143.0"
+  },
+  "dependencies": {
+    "vue": "^3.5.43"
+  }
+}

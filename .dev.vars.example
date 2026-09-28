@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local development. In production set it with:
+#   npx wrangler secret put LEAGUE_PASSCODE
+#   npx wrangler secret put COMMISH_PASSCODE
+LEAGUE_PASSCODE=dev
+# The commissioner logs in with this one instead. Set it the same way.
+COMMISH_PASSCODE=commish

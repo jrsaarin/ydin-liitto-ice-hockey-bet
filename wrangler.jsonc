@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ydin-liitto-cup",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cup-bet",
+      "database_id": "73f82bf7-ef18-4c3b-b272-a199cb287332",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      // Caps API calls per visitor address, which slows down password guessing.
+      // A draft with all seven players on one Wi-Fi makes about 110 calls a minute.
+      "name": "API_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 300, "period": 60 }
+    }
+  ],
+  "triggers": {
+    // Pulls NHL results once a day at 11:00 UTC. The last games of the North
+    // American evening end around 06:00 UTC, so every result is final by then.
+    "crons": ["0 11 * * *"]
+  }
+}
