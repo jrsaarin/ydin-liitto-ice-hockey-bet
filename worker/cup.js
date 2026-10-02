@@ -10,6 +10,9 @@
 //   it beats the holder, the cup stays and nobody gets a point.
 // - An undrafted team can only hold the cup as the starting holder. Nobody
 //   scores until a drafted team beats it.
+// - Players level on points are separated by, in this order: the longest run
+//   of cup games won in a row, the most wins by one of their teams, and who
+//   held the cup most recently.
 
 const FINAL_STATES = new Set(["OFF", "FINAL"]);
 const LIVE_STATES = new Set(["LIVE", "CRIT"]);
@@ -23,7 +26,9 @@ export function isFinal(game) {
 }
 
 function emptyPlayerStats() {
-  return { points: 0, defenses: 0, captures: 0 };
+  // `lastHeld` is the number of cup games played when the player last held
+  // the cup: 0 for the start of the season, null for never.
+  return { points: 0, defenses: 0, captures: 0, longestStreak: 0, bestTeamWins: 0, lastHeld: null };
 }
 
 export function computeCup({ games, owners, startingHolder, now = Date.now() }) {
@@ -53,6 +58,10 @@ export function computeCup({ games, owners, startingHolder, now = Date.now() }) 
   let cursor = -Infinity;
   let streak = 0;
   let nextGame = null;
+  // The run of cup games won in a row by one player, across all their teams.
+  let winRun = 0;
+  let winRunBy = null;
+  if (ownerOf(holder) != null) playerStats[ownerOf(holder)].lastHeld = 0;
 
   const challengerOf = (game) => (game.away === holder ? game.home : game.away);
   // Two undrafted teams playing each other has nothing to do with the bet.
@@ -93,9 +102,14 @@ export function computeCup({ games, owners, startingHolder, now = Date.now() }) 
     const pointTo = ownerOf(winner);
 
     streak += 1;
+    winRun = pointTo === winRunBy ? winRun + 1 : 1;
+    winRunBy = pointTo;
     if (pointTo != null) {
-      playerStats[pointTo].points += 1;
+      const stats = playerStats[pointTo];
+      stats.points += 1;
       teamStats[winner].points += 1;
+      stats.longestStreak = Math.max(stats.longestStreak, winRun);
+      stats.bestTeamWins = Math.max(stats.bestTeamWins, teamStats[winner].points);
     }
     if (held && owner != null) playerStats[owner].defenses += 1;
     if (changedHands && challengerOwner !== owner) playerStats[challengerOwner].captures += 1;
@@ -121,6 +135,7 @@ export function computeCup({ games, owners, startingHolder, now = Date.now() }) 
       holder = winner;
       streak = 0;
     }
+    if (ownerOf(holder) != null) playerStats[ownerOf(holder)].lastHeld = history.length;
     cursor = game.time;
   }
 
@@ -135,18 +150,35 @@ export function computeCup({ games, owners, startingHolder, now = Date.now() }) 
   };
 }
 
-// Leaderboard rows. Only points decide the rank, so players level on points
-// share it. Captures and names merely order the rows inside a tie.
+// What decides the rank, most important first: points, then the tie-breakers.
+const RANK_KEYS = [
+  (row) => row.points,
+  (row) => row.longestStreak,
+  (row) => row.bestTeamWins,
+  (row) => row.lastHeld ?? -1,
+];
+
+function compareRank(a, b) {
+  for (const key of RANK_KEYS) {
+    const difference = key(b) - key(a);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+// Leaderboard rows. Players share a rank only if every tie-breaker is level
+// too. Captures and names merely order the rows inside such a tie.
 export function rankPlayers(players, playerStats) {
   return players
     .map((player) => ({
       playerId: player.id,
       name: player.name,
-      ...(playerStats[player.id] ?? emptyPlayerStats()),
+      ...emptyPlayerStats(),
+      ...playerStats[player.id],
     }))
-    .sort((a, b) => b.points - a.points || b.captures - a.captures || a.name.localeCompare(b.name))
+    .sort((a, b) => compareRank(a, b) || b.captures - a.captures || a.name.localeCompare(b.name))
     .map((row, index, rows) => ({
-      rank: rows.findIndex((other) => other.points === row.points) + 1,
+      rank: rows.findIndex((other) => compareRank(other, row) === 0) + 1,
       ...row,
     }));
 }

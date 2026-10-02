@@ -782,7 +782,7 @@ input[type="password"] {
 }
 
 @media (max-width: 560px) {
-  /* Points decide the race; the tie-break columns need more room than a phone has. */
+  /* Points decide the race; the other columns need more room than a phone has. */
   .standings .extra {
     display: none;
   }

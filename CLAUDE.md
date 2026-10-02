@@ -89,7 +89,7 @@ Profile pictures follow their own path, because they are large and the state is 
 - The point for a cup game goes to the owner of the winner. Losing never scores, so the game that ends a reign pays the new holder. Scoring "games played as holder" was considered and rejected.
 - An undrafted team cannot take the cup. If it beats the holder, the cup stays and nobody scores. Letting the cup travel to undrafted teams was considered and rejected.
 - Regular season only. Playoffs are not part of the bet.
-- Rank is decided by points alone. Captures and defenses are shown but break no ties.
+- Rank is decided by points, then by three tie-breakers in order: the player's longest run of cup games won in a row, the most cup wins by one of the player's teams, and who held the cup most recently. Players level on all of them share the rank. Captures and defenses are shown but break no ties.
 - Identity inside the group is on trust. Do not add per-player authentication. The one exception is the commissioner, named in `CONFIG.commissioner`, who has a separate password.
 - Anyone in the group may draw the draft order. Only the commissioner can undo picks or reset.
 - After the draft the page is read-only for members. The commissioner keeps the fix panel.

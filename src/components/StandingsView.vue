@@ -67,6 +67,8 @@ function resultKind(game) {
           <th class="num">Points</th>
           <th class="num extra" title="Games won as cup holder">Defended</th>
           <th class="num extra" title="Times the cup was taken from another player">Taken</th>
+          <th class="num extra" title="Most cup games won in a row. First tie-breaker">Streak</th>
+          <th class="num extra" title="Cup games won by the player's best team. Second tie-breaker">Best team</th>
         </tr>
       </thead>
       <tbody>
@@ -80,12 +82,15 @@ function resultKind(game) {
           <td class="num points">{{ row.points }}</td>
           <td class="num extra">{{ row.defenses }}</td>
           <td class="num extra">{{ row.captures }}</td>
+          <td class="num extra">{{ row.longestStreak }}</td>
+          <td class="num extra">{{ row.bestTeamWins }}</td>
         </tr>
       </tbody>
     </table>
     <p class="hint">
       One point for every cup game won, whether defending the cup or taking it. Undrafted teams cannot take the
-      cup or score. Most points wins.
+      cup or score. Most points wins. Equal points are separated by the longest win streak, then by the most wins
+      of a single team, then by who held the cup last.
     </p>
   </section>
 

@@ -9,7 +9,13 @@ A small bookkeeping app for a hockey bet between seven friends.
 3. Every game the cup holder plays is a cup game. The player who owns the winning team gets one point. Overtime and shootout results count.
 4. When a drafted team beats the cup holder, the cup moves to that team.
 5. The four undrafted teams cannot take the cup. If one of them beats the holder, the cup stays and nobody gets a point.
-6. The bet covers the regular season only. Most points on the last day wins. Equal points share the win.
+6. The bet covers the regular season only. Most points on the last day wins.
+7. Equal points are separated by three tie-breakers, in this order:
+   1. The longest win streak: the most cup games won in a row by one player. The streak carries over when the cup moves between two teams of the same player, and ends when anyone else wins a cup game.
+   2. The best single team: the player whose team has won the most cup games.
+   3. The last holder: the player who held the cup most recently.
+
+   Players who are level on all three share the place.
 
 ## How it works
 

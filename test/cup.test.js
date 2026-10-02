@@ -28,6 +28,11 @@ function run(games, options = {}) {
   return computeCup({ games, owners, startingHolder: "CAR", now: NOW, ...options });
 }
 
+// The stats without the tie-breakers, which have tests of their own.
+function tally({ points, defenses, captures }) {
+  return { points, defenses, captures };
+}
+
 test("with no games the starting holder keeps the cup", () => {
   const cup = run([]);
   assert.equal(cup.holder, "CAR");
@@ -39,7 +44,7 @@ test("with no games the starting holder keeps the cup", () => {
 test("a defense keeps the cup and scores a point", () => {
   const cup = run([game(1, "FLA", "CAR", 1, 3)]);
   assert.equal(cup.holder, "CAR");
-  assert.deepEqual(cup.playerStats[1], { points: 1, defenses: 1, captures: 0 });
+  assert.deepEqual(tally(cup.playerStats[1]), { points: 1, defenses: 1, captures: 0 });
   assert.equal(cup.history[0].changedHands, false);
   assert.equal(cup.history[0].pointTo, 1);
   assert.equal(cup.streak, 1);
@@ -50,9 +55,9 @@ test("a loss moves the cup and the point to the winner", () => {
   assert.equal(cup.holder, "EDM");
   assert.equal(cup.holderOwner, 3);
   // FLA won games 1 and 2, EDM won game 3. CAR lost its only cup game.
-  assert.deepEqual(cup.playerStats[1], { points: 0, defenses: 0, captures: 0 });
-  assert.deepEqual(cup.playerStats[2], { points: 2, defenses: 1, captures: 1 });
-  assert.deepEqual(cup.playerStats[3], { points: 1, defenses: 0, captures: 1 });
+  assert.deepEqual(tally(cup.playerStats[1]), { points: 0, defenses: 0, captures: 0 });
+  assert.deepEqual(tally(cup.playerStats[2]), { points: 2, defenses: 1, captures: 1 });
+  assert.deepEqual(tally(cup.playerStats[3]), { points: 1, defenses: 0, captures: 1 });
   assert.deepEqual(cup.teamStats.FLA, { points: 2 });
   assert.deepEqual(cup.teamStats.CAR, { points: 0 });
   assert.deepEqual(cup.history.map((entry) => entry.pointTo), [2, 2, 3]);
@@ -74,7 +79,7 @@ test("games that do not involve the holder are irrelevant", () => {
 test("beating an undrafted team scores a point", () => {
   const cup = run([game(1, "BOS", "CAR", 1, 5)]);
   assert.equal(cup.holder, "CAR");
-  assert.deepEqual(cup.playerStats[1], { points: 1, defenses: 1, captures: 0 });
+  assert.deepEqual(tally(cup.playerStats[1]), { points: 1, defenses: 1, captures: 0 });
   assert.equal(cup.history[0].pointTo, 1);
   assert.equal(cup.history[0].changedHands, false);
 });
@@ -85,7 +90,7 @@ test("losing to an undrafted team keeps the cup and nobody scores", () => {
   assert.equal(cup.holderOwner, 1);
   assert.equal(cup.history.length, 2);
   // Only the win over Florida counts.
-  assert.deepEqual(cup.playerStats[1], { points: 1, defenses: 1, captures: 0 });
+  assert.deepEqual(tally(cup.playerStats[1]), { points: 1, defenses: 1, captures: 0 });
   assert.deepEqual(cup.teamStats.CAR, { points: 1 });
 
   const lost = cup.history[0];
@@ -107,7 +112,7 @@ test("the cup can move between two teams of the same player", () => {
   assert.equal(cup.holder, "TOR");
   assert.equal(cup.holderOwner, 1);
   // The owner wins the game either way, but it is not a capture.
-  assert.deepEqual(cup.playerStats[1], { points: 1, defenses: 0, captures: 0 });
+  assert.deepEqual(tally(cup.playerStats[1]), { points: 1, defenses: 0, captures: 0 });
   assert.deepEqual(cup.teamStats.TOR, { points: 1 });
 });
 
@@ -175,12 +180,80 @@ test("an undrafted starting holder scores for nobody until beaten", () => {
   assert.equal(cup.history.length, 3);
   // Losing to the undrafted holder scores nothing. Beating it scores and takes the cup.
   assert.deepEqual(cup.history.map((entry) => entry.pointTo), [null, null, 3]);
-  assert.deepEqual(cup.playerStats[3], { points: 1, defenses: 0, captures: 1 });
+  assert.deepEqual(tally(cup.playerStats[3]), { points: 1, defenses: 0, captures: 1 });
   const total = Object.values(cup.playerStats).reduce((sum, stats) => sum + stats.points, 0);
   assert.equal(total, 1);
 });
 
-test("standings rank by points and share ranks on equal points", () => {
+test("a win streak follows the player across teams and ends when someone else wins", () => {
+  const cup = run([
+    game(1, "FLA", "CAR", 1, 3),
+    game(2, "TOR", "CAR", 3, 2), // same owner: the streak goes on
+    game(3, "BOS", "TOR", 2, 1), // lost to an undrafted team: the streak ends
+    game(4, "EDM", "TOR", 0, 1),
+    game(5, "FLA", "TOR", 4, 1),
+  ]);
+  assert.equal(cup.playerStats[1].points, 3);
+  assert.equal(cup.playerStats[1].longestStreak, 2);
+  assert.equal(cup.playerStats[2].longestStreak, 1);
+  assert.equal(cup.playerStats[3].longestStreak, 0);
+});
+
+test("the best team is the one with the most cup wins", () => {
+  const cup = run([game(1, "FLA", "CAR", 1, 3), game(2, "TOR", "CAR", 3, 2), game(4, "EDM", "TOR", 0, 1)]);
+  assert.deepEqual(cup.teamStats.TOR, { points: 2 });
+  assert.deepEqual(cup.teamStats.CAR, { points: 1 });
+  assert.equal(cup.playerStats[1].bestTeamWins, 2);
+  assert.equal(cup.playerStats[2].bestTeamWins, 0);
+});
+
+test("the last time each player held the cup is recorded", () => {
+  assert.equal(run([]).playerStats[1].lastHeld, 0);
+  assert.equal(run([]).playerStats[2].lastHeld, null);
+
+  const cup = run([game(1, "FLA", "CAR", 4, 3), game(3, "FLA", "EDM", 2, 1), game(5, "EDM", "FLA", 5, 0)]);
+  // CAR held it only at the start, FLA until the third game, EDM holds it now.
+  assert.equal(cup.playerStats[1].lastHeld, 0);
+  assert.equal(cup.playerStats[2].lastHeld, 2);
+  assert.equal(cup.playerStats[3].lastHeld, 3);
+});
+
+test("equal points are separated by streak, then best team, then the last holder", () => {
+  const players = [
+    { id: 1, name: "Aino" },
+    { id: 2, name: "Bertta" },
+    { id: 3, name: "Celia" },
+    { id: 4, name: "Daavid" },
+    { id: 5, name: "Eero" },
+  ];
+  const level = { points: 4, defenses: 0, captures: 0 };
+  const stats = {
+    1: { ...level, longestStreak: 2, bestTeamWins: 2, lastHeld: 3 },
+    2: { ...level, longestStreak: 2, bestTeamWins: 2, lastHeld: 9 },
+    3: { ...level, longestStreak: 2, bestTeamWins: 3, lastHeld: null },
+    4: { ...level, longestStreak: 3, bestTeamWins: 1, lastHeld: null },
+    5: { ...level, points: 5, longestStreak: 1, bestTeamWins: 1, lastHeld: null },
+  };
+  assert.deepEqual(rankPlayers(players, stats).map((row) => [row.rank, row.name]), [
+    [1, "Eero"],
+    [2, "Daavid"],
+    [3, "Celia"],
+    [4, "Bertta"],
+    [5, "Aino"],
+  ]);
+});
+
+test("holding the cup at the start beats never holding it", () => {
+  const players = [
+    { id: 1, name: "Aino" },
+    { id: 2, name: "Bertta" },
+  ];
+  const level = { points: 1, defenses: 0, captures: 0, longestStreak: 1, bestTeamWins: 1 };
+  const table = rankPlayers(players, { 1: { ...level, lastHeld: null }, 2: { ...level, lastHeld: 0 } });
+  assert.deepEqual(table.map((row) => [row.rank, row.name]), [[1, "Bertta"], [2, "Aino"]]);
+});
+
+test("standings share a rank only when every tie-breaker is level", () => {
   const players = [
     { id: 1, name: "Aino" },
     { id: 2, name: "Bertta" },
@@ -193,7 +266,8 @@ test("standings rank by points and share ranks on equal points", () => {
     3: { points: 3, defenses: 1, captures: 2 },
   };
   const table = rankPlayers(players, stats);
-  // Celia is listed above Aino for her captures, but they share second place.
+  // Celia is listed above Aino for her captures, but they share second place:
+  // captures are not a tie-breaker.
   assert.deepEqual(table.map((row) => [row.rank, row.name]), [
     [1, "Bertta"],
     [2, "Celia"],
